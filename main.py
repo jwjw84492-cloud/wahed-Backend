@@ -1,10 +1,12 @@
 import time
-import secrets
-import math
-from flask import Flask
+import base64
+import os
+from flask import Flask, request, jsonify, render_template
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
+# --- Core Engine ---
 class MultimediaEngine:
     def __init__(self, f_lambda=15.0725):
         self.f_lambda = f_lambda
@@ -13,10 +15,12 @@ class MultimediaEngine:
         encoded_signals = []
         decoded_output = bytearray()
         
+        # Encoding
         for i, byte in enumerate(data_bytes):
             signal = (byte * self.f_lambda + (i + 1)) % 1.0
             encoded_signals.append(signal)
         
+        # Decoding
         for i, signal in enumerate(encoded_signals):
             found = False
             for byte_val in range(256):
@@ -27,42 +31,45 @@ class MultimediaEngine:
                     break
             if not found:
                 return None, False
-        
         return decoded_output, True
+
+engine = MultimediaEngine()
+
+# --- Routes ---
 
 @app.route('/')
 def index():
-    return "Multimedia Engine is Running."
+    return render_template('index.html')
 
-def run_multimedia_challenge():
-    engine = MultimediaEngine()
-    file_types = {
-        "Digital Image (.raw)": 1000,
-        "Audio Stream (.wav)": 5000,
-        "Video Fragment (.mp4)": 10000
-    }
+@app.route('/process', methods=['POST'])
+def process():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
     
-    print("====================================================")
-    print("   UNIVERSAL MULTIMEDIA RECOVERY CHALLENGE (F-λ)   ")
-    print("====================================================\n")
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Empty filename"}), 400
 
-    for file_name, size in file_types.items():
-        raw_data = secrets.token_bytes(size)
-        print(f"Testing: {file_name} | Size: {size} Bytes")
-        
-        start_time = time.time()
-        recovered_data, success = engine.process_data(raw_data)
-        end_time = time.time()
-        
-        integrity = (raw_data == recovered_data)
-        print(f"Result: {'[SUCCESS]' if integrity else '[FAILURE]'}")
-        print("-" * 50)
+    # Read and process data
+    start_time = time.time()
+    raw_data = file.read()
+    recovered_data, success = engine.process_data(raw_data)
+    end_time = time.time()
 
-    print("\nConclusion: The F-Lambda core can archive any complex digital signal.")
+    if not success:
+        return jsonify({"error": "Processing failed"}), 500
+
+    # Prepare response
+    duration = f"{end_time - start_time:.4f}s"
+    encoded_file = base64.b64encode(recovered_data).decode('utf-8')
+    
+    return jsonify({
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "recovered_file": encoded_file,
+        "processing_time": duration
+    })
 
 if __name__ == "__main__":
-    run_multimedia_challenge()
-    # Port for Render deployment
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
