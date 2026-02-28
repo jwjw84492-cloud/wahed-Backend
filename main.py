@@ -21,8 +21,10 @@ class MultimediaEngine:
             encoded_signals.append(signal)
         
         # 2. DECODING PHASE (Back to Physical Reality)
+        # We simulate the recovery from the spectral seed
         for i, signal in enumerate(encoded_signals):
             found = False
+            # Optimized deterministic search for the matching byte
             for byte_val in range(256):
                 test_sig = (byte_val * self.f_lambda + (i + 1)) % 1.0
                 if abs(test_sig - signal) < 1e-12:
@@ -37,6 +39,7 @@ class MultimediaEngine:
 def run_multimedia_challenge():
     engine = MultimediaEngine()
     
+    # Simulating different file types with high-entropy raw data
     file_types = {
         "Digital Image (.raw)": 10000,   # 10 KB
         "Audio Stream (.wav)": 50000,    # 50 KB
@@ -48,6 +51,7 @@ def run_multimedia_challenge():
     print("====================================================\n")
 
     for file_name, size in file_types.items():
+        # Generate cryptographically strong random bytes (Simulating complex media)
         raw_data = secrets.token_bytes(size)
         
         print(f"Testing: {file_name}")
@@ -58,8 +62,9 @@ def run_multimedia_challenge():
         end_time = time.time()
         
         duration = end_time - start_time
-        ratio = duration / size
+        ratio = duration / size if size > 0 else 0
         
+        # Validation
         integrity = (raw_data == recovered_data)
         
         print(f"Result: {'[SUCCESS]' if integrity else '[FAILURE]'}")
@@ -76,7 +81,3 @@ def run_multimedia_challenge():
 
 if __name__ == "__main__":
     run_multimedia_challenge()
-    # السطر السحري: يمنع البرنامج من الإغلاق ليبقى Render "أخضر"
-    print("\nAxiomara Cloud is now holding the session... Press Ctrl+C to stop.")
-    while True:
-        time.sleep(3600) 
