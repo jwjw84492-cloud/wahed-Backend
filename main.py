@@ -1,7 +1,6 @@
 import time
 import secrets
 import math
-import os
 
 class MultimediaEngine:
     def __init__(self, f_lambda=15.0725):
@@ -76,5 +75,8 @@ def run_multimedia_challenge():
     print("\nConclusion: The F-Lambda core can archive any complex digital signal.")
 
 if __name__ == "__main__":
-    # هذا السطر يضمن تشغيل التحدي فور تشغيل الملف في Render
     run_multimedia_challenge()
+    # السطر السحري: يمنع البرنامج من الإغلاق ليبقى Render "أخضر"
+    print("\nAxiomara Cloud is now holding the session... Press Ctrl+C to stop.")
+    while True:
+        time.sleep(3600) 
