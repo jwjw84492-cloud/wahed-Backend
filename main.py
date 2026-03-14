@@ -5,7 +5,6 @@ import hashlib
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# إعداد تطبيق Flask
 app = Flask(__name__)
 CORS(app)
 
@@ -14,26 +13,42 @@ class FLambdaCore:
     F_LAMBDA = 15.0725  
 
     @staticmethod
-    def generate_signature(data: bytes) -> list:
-        """توليد تواقيع رقمية بناءً على محتوى الملف"""
-        signals = [
-            float(f"{(b * FLambdaCore.F_LAMBDA + (i + 1)) % 1.0:.12f}")
-            for i, b in enumerate(data[:100])
-        ]
-        return signals
+    def encode(data):
+        if isinstance(data, str):
+            raw_bytes = data.encode('utf-8')
+        elif isinstance(data, bytes):
+            raw_bytes = data
+        elif hasattr(data, 'read'):
+            raw_bytes = data.read()
+        else:
+            raw_bytes = str(data).encode('utf-8')
 
-    @staticmethod
-    def verify_integrity(original: bytes, recovered: bytes) -> bool:
-        """التأكد من أن البيانات المسترجعة تطابق البيانات الأصلية باستخدام SHA-256"""
-        hash1 = hashlib.sha256(original).hexdigest()
-        hash2 = hashlib.sha256(recovered).hexdigest()
-        return hash1 == hash2
+        CHUNK_SIZE = 10000
+        signals = []
+        
+        # تحويل البيانات إلى إشارات رقمية (Signatures)
+        for chunk_start in range(0, len(raw_bytes), CHUNK_SIZE):
+            chunk = raw_bytes[chunk_start:chunk_start + CHUNK_SIZE]
+            for i, byte in enumerate(chunk):
+                global_index = chunk_start + i
+                # المعادلة الرياضية لتوليد الإشارة
+                signal = (byte * FLambdaCore.F_LAMBDA + (global_index + 1)) % 1.0
+                signals.append(float(f"{signal:.12f}"))
+
+        # حساب البصمة الرقمية النهائية
+        fingerprint = round(sum(signals) % 1.0, 12)
+        return signals, fingerprint
+
+def verify_integrity(original: bytes, recovered: bytes) -> bool:
+    """التأكد من أن البيانات المسترجعة تطابق الأصلية تماماً"""
+    hash1 = hashlib.sha256(original).hexdigest()
+    hash2 = hashlib.sha256(recovered).hexdigest()
+    return hash1 == hash2
 
 @app.route('/process', methods=['POST'])
 def process_file():
     start_time = time.time()
 
-    # التأكد من إرسال ملف في الطلب
     if 'file' not in request.files:
         return jsonify({"error": "no file sent"}), 400
 
@@ -41,13 +56,13 @@ def process_file():
     contents = file.read()
     file_size = len(contents)
 
-    # معالجة البيانات
-    signatures = FLambdaCore.generate_signature(contents)
+    # معالجة الملف
+    signals, fingerprint = FLambdaCore.encode(contents)
     encoded_content = base64.b64encode(contents).decode('utf-8')
     recovered_bytes = base64.b64decode(encoded_content)
     
-    # التحقق من سلامة البيانات
-    integrity_check = FLambdaCore.verify_integrity(contents, recovered_bytes)
+    # فحص السلامة
+    integrity_check = verify_integrity(contents, recovered_bytes)
     integrity_status = "100% VERIFIED" if integrity_check else "FAILED"
     processing_time = f"{(time.time() - start_time):.4f}s"
 
@@ -57,15 +72,37 @@ def process_file():
         "content_type": file.content_type,
         "size_bytes": file_size,
         "processing_time": processing_time,
-        "signatures": signatures,
+        "signatures": signals[:100], # عرض أول 100 إشارة فقط للاختصار
+        "fingerprint": fingerprint,
+        "total_signals": len(signals),
         "integrity": integrity_status,
         "recovered_file": encoded_content
+    })
+
+@app.route('/encode_text', methods=['POST'])
+def encode_text():
+    start_time = time.time()
+    data = request.get_json()
+
+    if not data or 'text' not in data:
+        return jsonify({"error": "no text sent"}), 400
+
+    text = data['text']
+    signals, fingerprint = FLambdaCore.encode(text)
+    processing_time = f"{(time.time() - start_time):.4f}s"
+
+    return jsonify({
+        "success": True,
+        "input_length": len(text),
+        "total_signals": len(signals),
+        "signals": signals,
+        "fingerprint": fingerprint,
+        "processing_time": processing_time
     })
 
 @app.route('/recover', methods=['POST'])
 def recover_file():
     data = request.get_json()
-
     if not data or 'recovered_file' not in data:
         return jsonify({"error": "no data to recover"}), 400
 
@@ -80,10 +117,11 @@ def health():
     return jsonify({
         "status": "running",
         "project": "Axiomara",
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "features": ["any_file", "any_text", "no_size_limit", "fingerprint"]
     })
 
 if __name__ == '__main__':
-    # تحديد المنفذ (Port) المتوافق مع Render
+    # تحديد المنفذ (Port) من البيئة أو استخدام 10000 كافتراضي
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
