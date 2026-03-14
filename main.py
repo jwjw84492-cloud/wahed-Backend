@@ -9,7 +9,7 @@ app = Flask(**name**)
 CORS(app)
 
 class FLambdaCore:
-F_LAMBDA = 0.0  # PUT YOUR NUMBER HERE
+F_LAMBDA = 15.0725  # PUT YOUR NUMBER HERE
 
 def generate_signature(data: bytes) -> list:
 signals = [
