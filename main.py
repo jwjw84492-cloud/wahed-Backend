@@ -8,20 +8,8 @@ from flask_cors import CORS
 app = Flask(**name**)
 CORS(app)
 
-# ============================================================
-
-# ضع ثابتك هنا
-
-# ============================================================
-
 class FLambdaCore:
-F_LAMBDA = 15.0725  # <– ضع رقمك هنا
-
-# ============================================================
-
-# دالة توليد البصمة (الهوية)
-
-# ============================================================
+F_LAMBDA = 0.0  # PUT YOUR NUMBER HERE
 
 def generate_signature(data: bytes) -> list:
 signals = [
@@ -30,22 +18,10 @@ for i, b in enumerate(data[:100])
 ]
 return signals
 
-# ============================================================
-
-# دالة التحقق من سلامة البيانات
-
-# ============================================================
-
 def verify_integrity(original: bytes, recovered: bytes) -> bool:
 hash1 = hashlib.sha256(original).hexdigest()
 hash2 = hashlib.sha256(recovered).hexdigest()
 return hash1 == hash2
-
-# ============================================================
-
-# API - معالجة أي ملف
-
-# ============================================================
 
 @app.route(’/process’, methods=[‘POST’])
 def process_file():
@@ -53,23 +29,17 @@ start_time = time.time()
 
 ```
 if 'file' not in request.files:
-    return jsonify({"error": "لم يتم إرسال أي ملف"}), 400
+    return jsonify({"error": "no file sent"}), 400
 
 file = request.files['file']
 contents = file.read()
 file_size = len(contents)
 
-# توليد البصمة
 signatures = generate_signature(contents)
-
-# تحويل الملف لـ Base64 للنقل عبر JSON
 encoded_content = base64.b64encode(contents).decode('utf-8')
-
-# التحقق من سلامة البيانات
 recovered_bytes = base64.b64decode(encoded_content)
 integrity_check = verify_integrity(contents, recovered_bytes)
-integrity_status = "100% VERIFIED ✅" if integrity_check else "FAILED ❌"
-
+integrity_status = "100% VERIFIED" if integrity_check else "FAILED"
 processing_time = f"{(time.time() - start_time):.4f}s"
 
 return jsonify({
@@ -84,34 +54,20 @@ return jsonify({
 })
 ```
 
-# ============================================================
-
-# API - استرداد الملف من البصمة (للتطوير المستقبلي)
-
-# ============================================================
-
 @app.route(’/recover’, methods=[‘POST’])
 def recover_file():
 data = request.get_json()
 
 ```
 if not data or 'recovered_file' not in data:
-    return jsonify({"error": "لا توجد بيانات للاسترداد"}), 400
-
-recovered_file = data['recovered_file']
+    return jsonify({"error": "no data to recover"}), 400
 
 return jsonify({
     "success": True,
-    "recovered_file": recovered_file,
-    "message": "تم الاسترداد بنجاح"
+    "recovered_file": data['recovered_file'],
+    "message": "recovered successfully"
 })
 ```
-
-# ============================================================
-
-# API - فحص حالة السيرفر
-
-# ============================================================
 
 @app.route(’/health’, methods=[‘GET’])
 def health():
@@ -120,12 +76,6 @@ return jsonify({
 “project”: “Axiomara”,
 “version”: “1.0.0”
 })
-
-# ============================================================
-
-# تشغيل السيرفر
-
-# ============================================================
 
 if **name** == ‘**main**’:
 port = int(os.environ.get(‘PORT’, 10000))
