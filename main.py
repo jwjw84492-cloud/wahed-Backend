@@ -5,123 +5,149 @@ import hashlib
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(**name**)
 CORS(app)
 
 class FLambdaCore:
-    # القيمة الافتراضية، يمكنك تغييرها حسب حاجتك
-    F_LAMBDA = 15.0725  
+F_LAMBDA = 15.0725  # PUT YOUR NUMBER HERE
 
-    @staticmethod
-    def encode(data):
-        if isinstance(data, str):
-            raw_bytes = data.encode('utf-8')
-        elif isinstance(data, bytes):
-            raw_bytes = data
-        elif hasattr(data, 'read'):
-            raw_bytes = data.read()
-        else:
-            raw_bytes = str(data).encode('utf-8')
+def generate_id(data: bytes) -> dict:
+“””
+N = g(ID, Ts)
+ID = [(b * Ts + i) % 1.0 for each byte]
+“””
+signals = []
+for i, b in enumerate(data):
+signal = (b * FLambdaCore.F_LAMBDA + (i + 1)) % 1.0
+signals.append(float(f”{signal:.12f}”))
 
-        CHUNK_SIZE = 10000
-        signals = []
-        
-        # تحويل البيانات إلى إشارات رقمية (Signatures)
-        for chunk_start in range(0, len(raw_bytes), CHUNK_SIZE):
-            chunk = raw_bytes[chunk_start:chunk_start + CHUNK_SIZE]
-            for i, byte in enumerate(chunk):
-                global_index = chunk_start + i
-                # المعادلة الرياضية لتوليد الإشارة
-                signal = (byte * FLambdaCore.F_LAMBDA + (global_index + 1)) % 1.0
-                signals.append(float(f"{signal:.12f}"))
+```
+# بصمة اجمالية فريدة
+fingerprint = round(sum(signals) % 1.0, 12)
 
-        # حساب البصمة الرقمية النهائية
-        fingerprint = round(sum(signals) % 1.0, 12)
-        return signals, fingerprint
+# بصمة ترتيبية
+order_print = round(sum(s * (i+1) for i, s in enumerate(signals)) % 1.0, 12)
 
-def verify_integrity(original: bytes, recovered: bytes) -> bool:
-    """التأكد من أن البيانات المسترجعة تطابق الأصلية تماماً"""
-    hash1 = hashlib.sha256(original).hexdigest()
-    hash2 = hashlib.sha256(recovered).hexdigest()
-    return hash1 == hash2
+# بصمة SHA للتحقق
+sha = hashlib.sha256(data).hexdigest()
 
-@app.route('/process', methods=['POST'])
+return {
+    "signals": signals[:100],       # اول 100 اشاره
+    "total_signals": len(signals),  # عدد الاشارات الكلي
+    "fingerprint": fingerprint,     # البصمة الاجمالية
+    "order_print": order_print,     # البصمة الترتيبية
+    "sha256": sha                   # للتحقق
+}
+```
+
+def verify_uniqueness(id1: dict, id2: dict) -> dict:
+“””
+تحقق ان كل ملف له ID فريد
+“””
+same_fingerprint = id1[“fingerprint”] == id2[“fingerprint”]
+same_order = id1[“order_print”] == id2[“order_print”]
+same_sha = id1[“sha256”] == id2[“sha256”]
+
+```
+return {
+    "same_file": same_sha,
+    "same_fingerprint": same_fingerprint,
+    "same_order_print": same_order,
+    "unique": not same_fingerprint and not same_sha
+}
+```
+
+@app.route(’/process’, methods=[‘POST’])
 def process_file():
-    start_time = time.time()
+start_time = time.time()
 
-    if 'file' not in request.files:
-        return jsonify({"error": "no file sent"}), 400
+```
+if 'file' not in request.files:
+    return jsonify({"error": "no file sent"}), 400
 
-    file = request.files['file']
-    contents = file.read()
-    file_size = len(contents)
+file = request.files['file']
+contents = file.read()
+file_size = len(contents)
 
-    # معالجة الملف
-    signals, fingerprint = FLambdaCore.encode(contents)
-    encoded_content = base64.b64encode(contents).decode('utf-8')
-    recovered_bytes = base64.b64decode(encoded_content)
-    
-    # فحص السلامة
-    integrity_check = verify_integrity(contents, recovered_bytes)
-    integrity_status = "100% VERIFIED" if integrity_check else "FAILED"
-    processing_time = f"{(time.time() - start_time):.4f}s"
+id_data = generate_id(contents)
+encoded_content = base64.b64encode(contents).decode('utf-8')
 
-    return jsonify({
-        "success": True,
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size_bytes": file_size,
-        "processing_time": processing_time,
-        "signatures": signals[:100], # عرض أول 100 إشارة فقط للاختصار
-        "fingerprint": fingerprint,
-        "total_signals": len(signals),
-        "integrity": integrity_status,
-        "recovered_file": encoded_content
-    })
+# التحقق من سلامة البيانات
+recovered = base64.b64decode(encoded_content)
+integrity = hashlib.sha256(contents).hexdigest() == hashlib.sha256(recovered).hexdigest()
 
-@app.route('/encode_text', methods=['POST'])
-def encode_text():
-    start_time = time.time()
-    data = request.get_json()
+processing_time = f"{(time.time() - start_time):.4f}s"
 
-    if not data or 'text' not in data:
-        return jsonify({"error": "no text sent"}), 400
+return jsonify({
+    "success": True,
+    "filename": file.filename,
+    "content_type": file.content_type,
+    "size_bytes": file_size,
+    "processing_time": processing_time,
+    "integrity": "100% VERIFIED" if integrity else "FAILED",
+    "id": {
+        "fingerprint": id_data["fingerprint"],
+        "order_print": id_data["order_print"],
+        "total_signals": id_data["total_signals"],
+        "sha256": id_data["sha256"]
+    },
+    "signatures": id_data["signals"],
+    "recovered_file": encoded_content
+})
+```
 
-    text = data['text']
-    signals, fingerprint = FLambdaCore.encode(text)
-    processing_time = f"{(time.time() - start_time):.4f}s"
+@app.route(’/compare’, methods=[‘POST’])
+def compare_files():
+“””
+قارن ملفين وتحقق ان لكل واحد ID فريد
+“””
+start_time = time.time()
 
-    return jsonify({
-        "success": True,
-        "input_length": len(text),
-        "total_signals": len(signals),
-        "signals": signals,
-        "fingerprint": fingerprint,
-        "processing_time": processing_time
-    })
+```
+if 'file1' not in request.files or 'file2' not in request.files:
+    return jsonify({"error": "send file1 and file2"}), 400
 
-@app.route('/recover', methods=['POST'])
-def recover_file():
-    data = request.get_json()
-    if not data or 'recovered_file' not in data:
-        return jsonify({"error": "no data to recover"}), 400
+file1 = request.files['file1']
+file2 = request.files['file2']
 
-    return jsonify({
-        "success": True,
-        "recovered_file": data['recovered_file'],
-        "message": "recovered successfully"
-    })
+contents1 = file1.read()
+contents2 = file2.read()
 
-@app.route('/health', methods=['GET'])
+id1 = generate_id(contents1)
+id2 = generate_id(contents2)
+
+result = verify_uniqueness(id1, id2)
+processing_time = f"{(time.time() - start_time):.4f}s"
+
+return jsonify({
+    "success": True,
+    "processing_time": processing_time,
+    "file1": {
+        "name": file1.filename,
+        "size": len(contents1),
+        "fingerprint": id1["fingerprint"],
+        "order_print": id1["order_print"]
+    },
+    "file2": {
+        "name": file2.filename,
+        "size": len(contents2),
+        "fingerprint": id2["fingerprint"],
+        "order_print": id2["order_print"]
+    },
+    "result": result
+})
+```
+
+@app.route(’/health’, methods=[‘GET’])
 def health():
-    return jsonify({
-        "status": "running",
-        "project": "Axiomara",
-        "version": "2.0.0",
-        "features": ["any_file", "any_text", "no_size_limit", "fingerprint"]
-    })
+return jsonify({
+“status”: “running”,
+“project”: “Axiomara”,
+“version”: “3.0.0”,
+“model”: “N = g(ID, Ts)”,
+“features”: [“uniqueness”, “fingerprint”, “compare”, “any_file”]
+})
 
-if __name__ == '__main__':
-    # تحديد المنفذ (Port) من البيئة أو استخدام 10000 كافتراضي
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+if **name** == ‘**main**’:
+port = int(os.environ.get(‘PORT’, 10000))
+app.run(host=‘0.0.0.0’, port=port)
